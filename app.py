@@ -23,7 +23,7 @@ db_config = {
 conn = mysql.connector.connect(**db_config)
 cursor = conn.cursor()
 
-# Define route to get events
+# gets all events for a cattegory
 @app.route('/events/<eventCattegory>', methods=['GET'])
 def get_events(eventCattegory):
     try:
@@ -64,6 +64,8 @@ def get_events(eventCattegory):
     except mysql.connector.Error as err:
         return jsonify({'error': str(err)}), 500
 
+
+# Creates an event
 @app.route('/events', methods=['POST'])
 def create_event():
     try:
@@ -85,6 +87,7 @@ def create_event():
         conn.rollback()
         return jsonify({'error': str(err)}), 500
 
+#Allows a user to sign up for an event
 @app.route('/eventSignup/<eventID>/<userID>', methods=['POST'])
 def eventSignup(eventID, userID):
     try:
@@ -95,11 +98,12 @@ def eventSignup(eventID, userID):
         )
         # Commit the transaction
         conn.commit()
-        return jsonify({'message': 'Event created successfully'}), 201
+        return jsonify({'message': 'successfully signed up for event'}), 201
     except mysql.connector.Error as err:
         conn.rollback()
         return jsonify({'error': str(err)}), 500
 
+#gets an event by id, inlcuding detials, location, and participants
 @app.route('/getEvent/<eventID>', methods=["GET"])
 def getEvent(eventID):
     try:
@@ -117,6 +121,7 @@ def getEvent(eventID):
         
         # Fetch all rows for the query
         rows = cursor.fetchall()
+        print("rows", rows)
 
         # Initialize dictionaries to store event data, community center data, and admin data
         event_data = {}
@@ -125,7 +130,7 @@ def getEvent(eventID):
 
         # Convert rows to dictionaries
         for row in rows:
-            print(row)
+            print("rows", row)
             # Populate event data
             if not event_data:
                 event_data = {
@@ -148,19 +153,21 @@ def getEvent(eventID):
 
             # Append participant data to eventParticipants list
             event_data['eventParticipants'].append({
-                'userID': row[22],
-                'userFirstName': row[23],
-                'userLastName': row[24],
-                'userPhone': row[25],
-                'userAddress': row[26],
-                'userBirthday': row[27],
-                'userGender': row[28],
-                'userRace': row[29],
-                'userMedConditions': row[30],
-                'userEmergencyContactName': row[31],
-                'userEmergencyContactRelation': row[32],
-                'userEmergencyContactPhone': row[33],
-                'userEmergencyContactEmail': row[34],
+                'userID': row[38],
+                'userFirstName': row[24],
+                'userLastName': row[25],
+                'userEmail': row[26],
+                'userPhone': row[27],
+                'userAddress': row[28],
+                'userBirthday': row[29],
+                'userGender': row[30],
+                'userRace': row[31],
+                'userMedConditions': row[32],
+                'userEmergencyContactName': row[33],
+                'userEmergencyContactRelation': row[34],
+                'userEmergencyContactPhone': row[35],
+                'userEmergencyContactEmail': row[36],
+                'fireBaseUID': row[37]
                 # Add more fields if needed
             })
 
@@ -171,18 +178,93 @@ def getEvent(eventID):
         conn.rollback()
         return jsonify({'error': str(err)}), 500
 
+@app.route('/getEventsByDate/<eventDate>', methods=["GET"])
+def getEventsByDate(eventDate):
+    try:
+        # Execute the query to get event details, participants, community center, and admin information using JOINs
+        query = """
+            SELECT e.*, cc.*, a.*, u.*, er.*
+            FROM perfectMind.events e
+            LEFT JOIN perfectMind.communityCenters cc ON e.communityCenterID = cc.communityCenterID
+            LEFT JOIN perfectMind.admin a ON e.adminID = a.adminID
+            LEFT JOIN perfectMind.event_registration er ON e.eventID = er.eventID
+            LEFT JOIN perfectMind.users u ON er.userID = u.userID
+            WHERE e.eventDate = %s
+        """
+        cursor.execute(query, (eventDate,))
+        
+        # Fetch all rows for the query
+        rows = cursor.fetchall()
+        print("rows", rows)
+
+        # Initialize a dictionary to store events data
+        events = {}
+
+        # Convert rows to dictionaries
+        for row in rows:
+            print("row", row)
+            event_id = row[0]
+            
+            # Check if the event already exists in the dictionary
+            if event_id not in events:
+                # Populate event data
+                events[event_id] = {
+                    'eventID': row[0],
+                    'eventCommunityCenterName': row[13],
+                    'eventCommunityCenterLocation': row[14],
+                    'eventName': row[3],
+                    'eventDate': row[4],
+                    'eventTime': row[5],
+                    'eventCapacity': row[6],
+                    'eventDescription': row[7],
+                    'eventGenderRestrictions': row[8],
+                    'eventAgeRestrictions': row[9],
+                    'eventType': row[10],
+                    'eventCategory': row[11],
+                    'eventParticipants': []  # Initialize eventParticipants for the event
+                }
+            
+            # Append participant data to eventParticipants list
+            participant_data = {
+                'userID': row[38],
+                'userFirstName': row[24],
+                'userLastName': row[25],
+                'userEmail': row[26],
+                'userPhone': row[27],
+                'userAddress': row[28],
+                'userBirthday': row[29],
+                'userGender': row[30],
+                'userRace': row[31],
+                'userMedConditions': row[32],
+                'userEmergencyContactName': row[33],
+                'userEmergencyContactRelation': row[34],
+                'userEmergencyContactPhone': row[35],
+                'userEmergencyContactEmail': row[36],
+                'fireBaseUID': row[37]
+            }
+            events[event_id]['eventParticipants'].append(participant_data)
+
+        # Convert the events dictionary to a list
+        events_list = list(events.values())
+
+        return jsonify({'data': events_list}), 200
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({'error': str(err)}), 500
+
+#Creates a user
 @app.route('/createUser', methods=["POST"])
 def createUser():
     try:
         # Extract event parameters from request body
-        user_data = request.json
         print('ud', user_data)
         # Insert event into database
         cursor.execute("""
             INSERT INTO perfectMind.users 
-            (userFirstName, userLastName, userPhone, userAddress, userBirthday, userGender, userRace, userMedConditions, userEmContactName, userEmContactRelation, userEmContactPhone, userEmContactEmail)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (user_data['userFirstName'], user_data['userLastName'], user_data['userPhone'], user_data['userAddress'], user_data['userBirthday'], user_data['userGender'], user_data['userRace'], user_data['userMedConditions'], user_data['userEmContactName'], user_data['userEmContactRelation'], user_data['userEmContactPhone'], user_data['userEmContactEmail'])
+            (userFirstName, userLastName, userEmail, userPhone, userAddress, userBirthday, userGender, userRace, userMedConditions, userEmContactName, userEmContactRelation, userEmContactPhone, userEmContactEmail, fireBaseUID)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (user_data['userFirstName'], user_data['userLastName'], user_data['userEmail'], user_data['userPhone'], user_data['userAddress'], user_data['userBirthday'], user_data['userGender'], user_data['userRace'], user_data['userMedConditions'], user_data['userEmContactName'], user_data['userEmContactRelation'], user_data['userEmContactPhone'], user_data['userEmContactEmail'], user_data['fireBaseUID'],)
 )
 
         # Commit the transaction
@@ -192,12 +274,122 @@ def createUser():
         conn.rollback()
         return jsonify({'error': str(err)}), 500
 
+#creates Admin
+@app.route('/createAdmin', methods=["POST"])
+def createAdmin():
+    try:
+        user_data = request.json
+        # Insert event into database
+        cursor.execute("""
+            INSERT INTO perfectMind.admin 
+            (communityCenterID, adminName, adminEmail, fireBaseUID)
+            VALUES (%s, %s, %s, %s)""",
+            (user_data['communityCenterID'], user_data['adminName'], user_data['adminEmail'], user_data['fireBaseUID'])
+)
 
+        # Commit the transaction
+        conn.commit()
+        return jsonify({'message': 'Admin created successfully'}), 201
+
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({'error': str(err)}), 500
     
+#User SignIn
+@app.route('/userSignIn/<fireBaseUID>', methods=["GET"])
+def getUser(fireBaseUID):
+    try:
+        query = """
+            SELECT *
+            FROM perfectMind.users u
+            WHERE u.fireBaseUID = %s
+        """
+        cursor.execute(query, (fireBaseUID,))
+        
+        # Fetch the row for the query
+        row = cursor.fetchone()
+        print(row)
+        
+        if row:
+            user_data = {
+                'userID': row[0],
+                'userFirstName': row[1],
+                'userLastName': row[2],
+                'userEmail': row[3],
+                'userPhone': row[4],
+                'userAddress': row[5],
+                'userBirthday': row[6].strftime('%Y-%m-%d'),  # Format the date
+                'userGender': row[7],
+                'userRace': row[8],
+                'userMedConditions': row[9],
+                'userEmContactName': row[10],
+                'userEmContactRelation': row[11],
+                'userEmContactPhone': row[12],
+                'userEmContactEmail': row[13],
+                'fireBaseUID': row[14]
+            }
+            return jsonify({'data': user_data}), 200
+        else:
+            return jsonify({'error': 'User not found'}), 404
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({'error': str(err)}), 500
 
+#Admin Signin
+@app.route('/adminSignIn/<fireBaseUID>', methods=["GET"])
+def adminSignIn(fireBaseUID):
+    try:
+        query = """
+            SELECT *
+            FROM perfectMind.admin a
+            WHERE a.fireBaseUID = %s
+        """
+        cursor.execute(query, (fireBaseUID,))
+        
+        # Fetch the row for the query
+        row = cursor.fetchone()
+        print(row)
+        
+        if row:
+            user_data = {
+                'adminID': row[0],
+                'communityCenterID': row[1],
+                'adminName': row[2],
+                'adminEmail': row[3],
+                'fireBaseUID': row[4],
+            }
+            return jsonify({'data': user_data}), 200
+        else:
+            return jsonify({'error': 'User not found'}), 404
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({'error': str(err)}), 500
 
-
-
+@app.route('/eventRegistration', methods=['GET'])
+def eventRegistration():
+    try:
+        query = """
+            SELECT *
+            FROM perfectMind.event_registration
+        """
+        cursor.execute(query)
+        
+        # Fetch the row for the query
+        rows = cursor.fetchall()
+        print(rows)
+        eventRegistrations = []
+        for row in rows:
+            eventReg={
+                "eventID": row[0],
+                "userID": row[1]
+            }
+            eventRegistrations.append(eventReg)
+        
+        return jsonify({'data': eventRegistrations}), 200
+        
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({'error': str(err)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=True)
